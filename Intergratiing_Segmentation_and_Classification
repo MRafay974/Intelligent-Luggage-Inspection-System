@@ -1,0 +1,94 @@
+import numpy as np
+from sklearn.utils import shuffle
+from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+import tensorflow as tf
+import ipyplot
+import math
+import os
+from tensorflow.keras.models import *
+from tensorflow.keras.layers import *
+from tensorflow.keras.optimizers import *
+from tensorflow.keras.losses import *
+from tensorflow.keras.preprocessing.image import *
+
+
+classifier_model_path = '/content/drive/MyDrive/Model-Classification/my_model.h5'
+segmentation_model_path = '/content/drive/MyDrive/Model-Segmentation/my_model.h5'
+classifier_model = tf.keras.models.load_model(classifier_model_path)
+segmentation_model = tf.keras.models.load_model(segmentation_model_path)
+Loading the images
+testing_img_path = '/content/drive/MyDrive/Classifier/Test_images.npy'
+testing_img_Labels='/content/drive/MyDrive/Classifier/Test_labels.npy'
+testing_masks='/content/drive/MyDrive/Segmentation/Test_masks.npy'
+testing_images=np.load(testing_img_path)
+testing_labels=np.load(testing_img_Labels)
+testing_masks=np.load(testing_masks)
+
+
+# Class names
+class_names = ['safe', 'threat']
+# List to store threat images and their indices
+threat_images = []
+threat_indices = []
+# Loop through all images and make predictions
+for index in range(len(testing_images)):
+ test_image = testing_images[index]
+ prediction = classifier_model.predict(np.expand_dims(test_image, axis=0))
+ predicted_label_index = np.argmax(prediction)
+ predicted_label = class_names[predicted_label_index]
+ 
+ # If predicted label is "threat", store the image and index
+ if predicted_label == 'threat':
+ threat_images.append(test_image)
+ threat_indices.append(index)
+# Count of predicted threat images
+num_threat_images = len(threat_images)
+print(f'Number of predicted threat images: {num_threat_images}')
+
+
+# Total images classified as threat by our model were 427 . 
+def display_image_with_masks(index):
+ # Ensure the index is within range
+ if index >= len(threat_images):
+ print("Index out of range. Please choose a smaller index.")
+ return
+ image = threat_images[index]
+ image = cv2.resize(image, (256, 256))
+ # Predict the mask for the image
+ image_input = np.expand_dims(image, axis=0) # Expand dims to match model input
+ predicted_mask = segmentation_model.predict(image_input)
+ predicted_mask = np.squeeze(predicted_mask) # Remove the extra dimension
+ # Create a figure with three subplots
+ fig, ax = plt.subplots(1, 2, figsize=(15, 5))
+ # Display the original image
+ ax[0].imshow(image)
+ ax[0].set_title('Original Image')
+ ax[0].axis('off')
+ 
+ # Display the predicted mask
+ ax[1].imshow(predicted_mask, cmap='gray')
+ ax[1].set_title('Predicted Mask')
+ ax[1].axis('off')
+ plt.show()
+# Example usage: Display the image and masks at index 0
+display_image_with_masks(102)
+
+
+
+import numpy as np
+def calculate_dice_coefficient(predicted_labels, actual_labels):
+ # Convert labels to binary format (0 for 'safe', 1 for 'threat')
+ actual_binary = np.argmax(actual_labels, axis=1)
+ predicted_binary = np.argmax(predicted_labels, axis=1)
+ # Calculate TP, FP, FN
+ TP = np.sum((predicted_binary == 1) & (actual_binary == 1))
+ FP = np.sum((predicted_binary == 1) & (actual_binary == 0))
+ FN = np.sum((predicted_binary == 0) & (actual_binary == 1))
+ # Calculate Dice coefficient
+ dice_coefficient = (2 * TP) / (2 * TP + FP + FN)
+ 
+ return dice_coefficient
+predictions = classifier_model.predict(testing_images)
+dice_coefficient = calculate_dice_coefficient(predictions, testing_labels)
+print(f'Dice Coefficient: {dice_coefficient:.4f}')
